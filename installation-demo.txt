@@ -1,0 +1,102 @@
+💾 Installing PostGIS and pgRouting with Docker
+This guide provides step-by-step instructions for setting up a PostgreSQL database with PostGIS (Spatial Database) and pgRouting (Network/Path Analysis) extensions using Docker.
+
+📁 1. Project Structure
+First, create a directory for your setup files and add two files: Dockerfile and init-db.sh.
+
+/pgrouting-docker
+├── Dockerfile
+└── init-db.sh
+
+📄 2. Dockerfile Content
+This Dockerfile uses the official PostGIS image as a base and installs the pgRouting package.
+
+Dockerfile
+
+# Use the official PostGIS image with PostgreSQL 16 and PostGIS 3.4.
+FROM postgis/postgis:16-3.4
+
+# Switch to root to install additional packages.
+USER root
+
+# Update package list and install pgRouting for PostgreSQL 16.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-16-pgrouting \
+    && rm -rf /var/lib/apt/lists/*
+
+# Switch back to postgres user.
+USER postgres
+
+# Copy the initialization script to the entrypoint directory.
+COPY init-db.sh /docker-entrypoint-initdb.d/
+
+⚙️ 3. init-db.sh Content
+This script runs automatically when the container is first started and creates the required extensions (PostGIS and pgRouting).
+
+init-db.sh
+
+#!/bin/bash
+set -e
+
+echo "Creating PostGIS and pgRouting extensions..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE EXTENSION IF NOT EXISTS postgis;
+    CREATE EXTENSION IF NOT EXISTS pgrouting;
+EOSQL
+echo "Extensions created successfully."
+
+🚀 4. Build and Run the Docker Image
+
+🔨 Step 4.1: Build the Docker Image
+Navigate to the pgrouting-docker directory and build the image:
+
+docker build -t my-pgrouting-image .
+
+🏃 Step 4.2: Run the Docker Container
+Start a container using your custom image:
+
+- my-custom-db: Container name
+- -e POSTGRES_PASSWORD: Database password
+- -p 5435:5432: Maps local port 5435 to container port 5432
+
+docker run --name my-custom-db \
+  -e POSTGRES_PASSWORD=mysecretpassword \
+  -p 5435:5432 \
+  -d my-pgrouting-image
+
+🔍 5. Verify the Installation
+
+Connect to the database using a client (e.g., DBeaver, psql) on local port 5435 and run the following SQL commands to check the extensions.
+
+5.1 List Installed Extensions
+
+SELECT
+    extname,
+    extversion
+FROM
+    pg_extension
+ORDER BY
+    extname;
+
+You should see postgis and pgrouting in the list.
+
+5.2 Test PostGIS Functions
+
+SELECT PostGIS_full_version();
+
+5.3 Test pgRouting Functions
+
+SELECT pgr_version();
+
+🌍 6. Import OSM Data Example
+
+To import OSM data using osm2pgsql, run:
+
+docker run --rm --network pgrouter-demo \
+  -v C:\_burhan\blog-contents:/data \
+  -e PGPASSWORD=mysecretpassword \
+  iboates/osm2pgsql:latest osm2pgsql \
+  -d postgres -U postgres --host my-custom-db --port 5432 \
+  --create --slim --hstore --latlong \
+  --bbox 32.52,39.77,33.04,40.07 /data/turkey-latest.osm.pbf
